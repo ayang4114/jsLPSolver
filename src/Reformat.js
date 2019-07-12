@@ -278,20 +278,13 @@ function from_JSON(model) {
     return output;
 }
 
-module.exports = {
-    to_JSON: model => to_JSON(model),
-    parseArray,
-    REGEX,
-    parseObjective
-}
-
-// module.exports = function (model) {
-//     // If the user is giving us an array
-//     // or a string, convert it to a JSON Model
-//     // otherwise, spit it out as a string
-//     if (model.length) {
-//         return to_JSON(model);
-//     } else {
-//         return from_JSON(model);
-//     }
-// };
+module.exports = function (model) {
+    // If the user is giving us an array
+    // or a string, convert it to a JSON Model
+    // otherwise, spit it out as a string
+    if (model.length) {
+        return to_JSON(model);
+    } else {
+        return from_JSON(model);
+    }
+};
