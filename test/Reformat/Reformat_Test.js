@@ -3,14 +3,14 @@ const Reformat = require('../../src/Reformat')
 const test_cases = () => {
   const test = [
     'max: -12x + y;',
-    'max: -12x+ y;', // No Pass
-    'max:-12x+y;', // No Pass
-    'max:-12x+ y', // No Pass
+    'max: -12x+ y;',
+    'max:-12x+y;',
+    'max:-12x+ y',
     'max: -12    x + y;',
     'max: -12    x + 1y;',
     'max: -12x + 1y;',
-    'max: -12x+ 1y;', // No Pass
-    'max:-12x+1y;', // No Pass
+    'max: -12x+ 1y;',
+    'max:-12x+1y;',
   ]
   const didPass = (r) => {
     const type = r.opType === 'max'
@@ -32,7 +32,7 @@ const test_cases = () => {
     let failed = 0
     for (const i in test) {
       const txt = test[i]
-      const result = Reformat.to_JSON(txt)
+      const result = Reformat(txt)
       const res = didPass(result)
       failed += res ? 0 : 1
       if (!res) {
@@ -43,7 +43,6 @@ const test_cases = () => {
   }
 
   return {
-    test,
     runTest
   }
 }

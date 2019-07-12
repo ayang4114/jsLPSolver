@@ -6,8 +6,8 @@
 /*global process*/
 /*jshint -W083 */
 
-const INT = 'int'
-const BIN = 'bin'
+const INT = 'ints'
+const BIN = 'binaries'
 const UNRESTRICTED = 'unrestricted'
 const REGEX = {
     /* jshint ignore:start */
@@ -57,40 +57,24 @@ function parseObjective(input, model) {
     // Get the variables out
     ary.forEach(function (d) {
         // Get the number if it's there. This is fine.
-        hldr = REGEX.get_num(d)
+        coeff = REGEX.get_num(d)
 
         // Get the variable name
-        hldr2 = REGEX.get_word(d).replace(/\;$/, "");
+        var_name = REGEX.get_word(d).replace(/\;$/, "");
 
         // Make sure the variable is in the model
-        model.variables[hldr2] = model.variables[hldr2] || {};
-        model.variables[hldr2]._obj = hldr;
+        model.variables[var_name] = model.variables[var_name] || {};
+        model.variables[var_name]._obj = coeff;
     });
     return model
 }
 
 function parseTypeStatement(line, model, type) {
     const ary = REGEX.parse_num(line).slice(1);
-    let attribute
-    switch (type) {
-        case INT:
-            attribute = 'ints'
-            break
-        case BIN:
-            attribute = 'binaries'
-            break
-        case UNRESTRICTED:
-            attribute = 'unrestricted'
-            break
-        default:
-            console.log('Error in parseTypeStatement')
-            return
-    }
-
-    model[attribute] = model[attribute] || {};
+    model[type] = model[type] || {};
     ary.forEach(function (d) {
         d = d.replace(";", "");
-        model[attribute][d] = 1;
+        model[type][d] = 1;
     });
     return model
 }
@@ -140,7 +124,7 @@ function parseArray(input) {
         is_int,
         is_objective,
         is_unrestricted } = REGEX
-    var model = {
+    let model = {
         opType: '',
         optimize: '_obj',
         constraints: {},
@@ -165,7 +149,6 @@ function parseArray(input) {
             constraint++
         } else {
             console.log(`Cannot parse at line ${i}:`, `Content: ${currentLine}`)
-            throw new Error(`Cannot parse at line ${i}.\nContent: ${currentLine}`)
         }
     }
     return model
