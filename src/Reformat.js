@@ -6,56 +6,61 @@
 /*global process*/
 /*jshint -W083 */
 
+const INT = 'int'
+const BIN = 'bin'
+const UNRESTRICTED = 'unrestricted'
 const REGEX = {
-    rxo: {
-        /* jshint ignore:start */
-        is_blank: /^\W{0,}$/,
-        is_objective: /(max|min)(imize){0,}[^\n]*\:/i,
-        //previous version
-        //"is_int": /^\W{0,}int/i,
-        //new version to avoid comments
-        is_int: /^(?!\/\*)\W{0,}int\s{1,}/i,
-        is_bin: /^(?!\/\*)\W{0,}bin\s{1,}/i,
-        is_constraint: /(\>|\<){0,}\=/i,
-        is_unrestricted: /^\S{0,}unrestricted/i,
+    /* jshint ignore:start */
+    is_blank: s => (/^\W{0,}$/).test(s),
+    is_int: s => (/^(?!\/\*)\W{0,}int\s{1,}/i).test(s),
+    is_bin: s => (/^(?!\/\*)\W{0,}bin\s{1,}/i).test(s),
+    is_unrestricted: s => (/^\s{0,}unrestricted\s{1,}/i).test(s),
+    is_objective: s => (/(max|min)(imize){0,}[^\n]*\:/i).test(s),
+    is_constraint: s => (/(\>|\<){0,}\=/i).test(s),
 
-        // Fixed to prevent (+ or -) from being attached to variable names.
-        "parse_lhs": /(.*\:|(\-|\+){0,1}\s{0,}\d{0,}\.{0,1}\d{0,}\s{0,}[a-zA-Z])/gi,
-        "parse_rhs": /(\-|\+){0,1}\d{1,}\.{0,}\d{0,}\W{0,}\;{0,1}$/i,
-        "parse_dir": /(\>|\<){0,}\=/gi,
-        "parse_int": /[^\s|^\,]+/gi,
-        "parse_bin": /[^\s|^\,]+/gi,
-        "get_num": /(\-|\+){0,1}(\W|^)\d+\.{0,1}\d{0,}/g, // Why accepting character \W before the first digit?
-        "get_word": /[A-Za-z].*/
-        /* jshint ignore:end */
-    }
+    // Fixed to prevent (+ or -) from being attached to variable names.
+    parse_lhs: s => {
+        let arr = s.match(/(.*\:|(\-|\+){0,1}\s{0,}\d{0,}\.{0,1}\d{0,}\s{0,}[a-zA-Z])/gi)
+        arr = arr.map(d => d.replace(/\s+/, ""))
+        return arr
+    },
+    parse_rhs: s => {
+        const value = s.match(/(\-|\+){0,1}\d{1,}\.{0,}\d{0,}\W{0,}\;{0,1}$/i)[0]
+        return parseFloat(value)
+    },
+    parse_dir: s => s.match(/(\>|\<){0,}\=/gi)[0],
+    // parse_int: s => s.match(/[^\s|^\,]+/gi),
+    parse_num: s => s.match(/[^\s|^\,]+/gi),
+    get_num: d => {
+        let num = d.match(/(\-|\+){0,1}(\W|^)\d+\.{0,1}\d{0,}/g)
+
+        // If it isn't a number, it might
+        // be a standalone variable
+        if (num === null) {
+            num = d[0] === '-' ? -1 : 1
+        } else {
+            num = num[0];
+        }
+        return parseFloat(num)
+    }, // Why accepting character \W before the first digit?
+    get_word: d => d.match(/[A-Za-z].*/)[0]
+    /* jshint ignore:end */
 }
 
 function parseObjective(input, model) {
     // Set up in model the opType
     model.opType = input.match(/(max|min)/gi)[0];
     // Pull apart lhs
-    const rxo = REGEX.rxo
-    const ary = input.match(rxo.parse_lhs).map(function (d) {
-        return d.replace(/\s+/, "");
-    }).slice(1);
+    const ary = REGEX.parse_lhs(input).slice(1);
 
     // *** STEP 1 *** ///
     // Get the variables out
     ary.forEach(function (d) {
         // Get the number if it's there. This is fine.
-        hldr = d.match(rxo.get_num);
-        // If it isn't a number, it might
-        // be a standalone variable
-        if (hldr === null) {
-            hldr = d[0] === '-' ? -1 : 1
-        } else {
-            hldr = hldr[0];
-        }
-        hldr = parseFloat(hldr);
+        hldr = REGEX.get_num(d)
 
         // Get the variable name
-        hldr2 = d.match(rxo.get_word)[0].replace(/\;$/, "");
+        hldr2 = REGEX.get_word(d).replace(/\;$/, "");
 
         // Make sure the variable is in the model
         model.variables[hldr2] = model.variables[hldr2] || {};
@@ -64,119 +69,103 @@ function parseObjective(input, model) {
     return model
 }
 
-function parseIntegerStatement(line, model) {
-    // Get the array of ints
-    const ary = line.match(REGEX.rxo.parse_int).slice(1);
+function parseTypeStatement(line, model, type) {
+    const ary = REGEX.parse_num(line).slice(1);
+    let attribute
+    switch (type) {
+        case INT:
+            attribute = 'ints'
+            break
+        case BIN:
+            attribute = 'binaries'
+            break
+        case UNRESTRICTED:
+            attribute = 'unrestricted'
+            break
+        default:
+            console.log('Error in parseTypeStatement')
+            return
+    }
 
-    // Since we have an int, our model should too
-    model.ints = model.ints || {};
-
+    model[attribute] = model[attribute] || {};
     ary.forEach(function (d) {
         d = d.replace(";", "");
-        model.ints[d] = 1;
+        model[attribute][d] = 1;
     });
     return model
 }
 
-function parseBinaryStatement(line, model) {
-    // Get the array of bins
-    const ary = line.match(rxo.parse_bin).slice(1);
+function parseConstraint(line, model, constraint) {
+    constraints = {
+        ">=": "min",
+        "<=": "max",
+        "=": "equal"
+    }
+    var separatorIndex = line.indexOf(":");
+    var constraintExpression = (separatorIndex === -1) ? line : line.slice(separatorIndex + 1);
 
-    // Since we have an binary, our model should too
-    model.binaries = model.binaries || {};
+    // Pull apart lhs
+    const lhf = REGEX.parse_lhs(constraintExpression)
 
-    ary.forEach(function (d) {
-        d = d.replace(";", "");
-        model.binaries[d] = 1;
+    // *** STEP 1 *** ///
+    // Get the variables out
+    lhf.forEach(function (d) {
+        // Get the number if its there
+        const coeff = REGEX.get_num(d);
+        // Get the variable name
+        const var_name = REGEX.get_word(d);
+
+        // Make sure the variable is in the model
+        model.variables[var_name] = model.variables[var_name] || {};
+        model.variables[var_name][constraint] = coeff;
     });
+
+    // *** STEP 2 *** ///
+    // Get the RHS out
+    rhs = REGEX.parse_rhs(line);
+
+    // *** STEP 3 *** ///
+    // Get the Constrainer out
+    line = constraints[REGEX.parse_dir(line)];
+    model.constraints[constraint] = model.constraints[constraint] || {};
+    model.constraints[constraint][line] = rhs;
+
+    return model
 }
 
-/* 
- * Helper Functions.
- * 
- */
-function parseArray(rxo, constraints, input) {
+function parseArray(input) {
+    const {
+        is_bin,
+        is_constraint,
+        is_int,
+        is_objective,
+        is_unrestricted } = REGEX
     var model = {
-        "opType": "",
-        "optimize": "_obj",
-        "constraints": {},
-        "variables": {}
-    }, ary = null, hldr = "", hldr2 = "",
-        constraint = "", rhs = 0;
+        opType: '',
+        optimize: '_obj',
+        constraints: {},
+        variables: {}
+    }
+    let constraint = 1
     for (var i = 0; i < input.length; i++) {
-        constraint = "_" + i;
         // Get the string we're working with
         // Check why currentLine is mutable.
         let currentLine = input[i];
-
-        // Reset the array
-        ary = null;
-
         // Test to see if we're the objective
-        if (rxo.is_objective.test(currentLine)) {
+        if (is_objective(currentLine)) {
             model = parseObjective(currentLine, model)
-        } else if (rxo.is_int.test(currentLine)) {
-            model = parseIntegerStatement(currentLine, model)
-        } else if (rxo.is_bin.test(currentLine)) {
-            model = parseBinaryStatement(currentLine, model)
-        } else if (rxo.is_constraint.test(currentLine)) {
-            var separatorIndex = currentLine.indexOf(":");
-            var constraintExpression = (separatorIndex === -1) ? currentLine : currentLine.slice(separatorIndex + 1);
-
-            // Pull apart lhs
-            ary = constraintExpression.match(rxo.parse_lhs).map(function (d) {
-                return d.replace(/\s+/, "");
-            });
-
-            // *** STEP 1 *** ///
-            // Get the variables out
-            ary.forEach(function (d) {
-                // Get the number if its there
-                hldr = d.match(rxo.get_num);
-
-                if (hldr === null) {
-                    if (d.substr(0, 1) === "-") {
-                        hldr = -1;
-                    } else {
-                        hldr = 1;
-                    }
-                } else {
-                    hldr = hldr[0];
-                }
-
-                hldr = parseFloat(hldr);
-
-
-                // Get the variable name
-                hldr2 = d.match(rxo.get_word)[0];
-
-                // Make sure the variable is in the model
-                model.variables[hldr2] = model.variables[hldr2] || {};
-                model.variables[hldr2][constraint] = hldr;
-
-            });
-
-            // *** STEP 2 *** ///
-            // Get the RHS out
-            rhs = parseFloat(currentLine.match(rxo.parse_rhs)[0]);
-
-            // *** STEP 3 *** ///
-            // Get the Constrainer out
-            currentLine = constraints[currentLine.match(rxo.parse_dir)[0]];
-            model.constraints[constraint] = model.constraints[constraint] || {};
-            model.constraints[constraint][currentLine] = rhs;
-            ////////////////////////////////////
-        } else if (rxo.is_unrestricted.test(currentLine)) {
-            // Get the array of unrestricted
-            ary = currentLine.match(rxo.parse_int).slice(1);
-
-            // Since we have an int, our model should too
-            model.unrestricted = model.unrestricted || {};
-
-            ary.forEach(function (d) {
-                d = d.replace(";", "");
-                model.unrestricted[d] = 1;
-            });
+        } else if (is_int(currentLine)) {
+            model = parseTypeStatement(currentLine, model, INT)
+        } else if (is_bin(currentLine)) {
+            model = parseTypeStatement(currentLine, model, BIN)
+        } else if (is_unrestricted(currentLine)) {
+            model = parseTypeStatement(currentLine, model, UNRESTRICTED)
+        } else if (is_constraint(currentLine)) {
+            model = parseConstraint(currentLine, model, 'R' + constraint)
+            constraint++
+        } else {
+            console.log(`Cannot parse at line ${i}:`, `Content: ${currentLine}`)
+            throw new Error(`Cannot parse at line ${i}.\nContent: ${currentLine}`)
         }
     }
     return model
@@ -193,13 +182,6 @@ function parseArray(rxo, constraints, input) {
 *          work with
 **************************************************************/
 function to_JSON(input) {
-    var rxo = REGEX.rxo,
-        constraints = {
-            ">=": "min",
-            "<=": "max",
-            "=": "equal"
-        }
-
     // Handle input if its coming
     // to us as a hard string
     // instead of as an array of
@@ -208,14 +190,14 @@ function to_JSON(input) {
         let splits = []
         input = input.split('\n');
         input = input.map(e => {
-            splits.push(...e.split(';'))
+            splits.push(...e.split(';').filter(x => x !== ''))
         })
         input = splits
     }
 
     // Start iterating over the rows
     // to see what all we have
-    return parseArray(rxo, constraints, input);
+    return parseArray(input);
 }
 
 

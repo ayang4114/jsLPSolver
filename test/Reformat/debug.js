@@ -2,7 +2,6 @@ const parseArray = require('../../src/Reformat').parseObjective
 const toJSON = require('../../src/Reformat').to_JSON
 const rxo = require('../../src/Reformat').REGEX.rxo
 
-rxo.is_objective = /(max|min)(imize){0,}[^\n]*\:/i
 const test = [
   'max: -x + y;',
   'max: +12x+ y;',
@@ -22,6 +21,6 @@ const model = {
   "variables": {}
 }
 
-const statement = 'max: -x + y + z;\nint x,y;\nx <= 2;\ny <= 3'
+const statement = 'max:x+y;x <= 2;unrestricted y;'
 
 console.log(toJSON(statement, model))
